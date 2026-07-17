@@ -1,0 +1,10 @@
+[Cc]ache/
+[Bb]uild/
+[Bb]in/
+[Bb]inaries/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+.vs/
