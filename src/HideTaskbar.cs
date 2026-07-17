@@ -5,27 +5,35 @@ using System.Text;
 
 class HideTaskbar
 {
-    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
     [DllImport("user32.dll")] static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("shell32.dll")] static extern IntPtr SHAppBarMessage(uint dwMessage, ref APPBARDATA pData);
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
 
     delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-    const int SW_HIDE = 0;
-    const int SW_SHOW = 5;
-
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
     [StructLayout(LayoutKind.Sequential)]
-    struct RECT { public int L, T, R, B; }
+    struct APPBARDATA
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        public RECT rc;
+        public IntPtr lParam;
+    }
+
+    const uint ABM_SETSTATE = 0x0000000A;
+    const uint ABS_AUTOHIDE = 0x00000001;
+    const uint MB_OK = 0;
+    const uint MB_ICONINFORMATION = 0x40;
 
     static void Main(string[] args)
     {
         string cmd = args.Length > 0 ? args[0].ToLower() : "toggle";
-
-        bool includePrimary = cmd == "--all" || (args.Length > 1 && args[1] == "--all");
-        if (cmd == "--all") cmd = "toggle";
 
         var handles = new List<TrayInfo>();
 
@@ -43,42 +51,45 @@ class HideTaskbar
 
         if (handles.Count == 0)
         {
-            Console.WriteLine("[!] 未找到任何任务栏窗口");
-            Console.ReadKey();
+            if (cmd == "toggle")
+                MessageBox(IntPtr.Zero, "未找到任何任务栏窗口", "HideTaskbar", MB_OK | MB_ICONINFORMATION);
             return;
         }
 
+        var messages = new List<string>();
+
         foreach (var t in handles)
         {
-            // 是否主显示器任务栏
             bool isPrimary = (t.cls == "Shell_TrayWnd");
+            string label = isPrimary ? "主屏" : "副屏 (" + (t.rect.L > 6000 ? "右" : t.rect.L > 3000 ? "中" : "") + ")";
 
-            // 默认只操作副屏任务栏，除非指定 --all
-            if (isPrimary && !includePrimary) continue;
-
-            string label = isPrimary ? "主显示器" : string.Format("副屏 ({0})", t.rect.L < 0 ? "左" : "右");
+            var abd = new APPBARDATA();
+            abd.cbSize = Marshal.SizeOf(abd);
+            abd.hWnd = t.hWnd;
 
             switch (cmd)
             {
                 case "hide":
-                    ShowWindow(t.hWnd, SW_HIDE);
-                    Console.WriteLine(string.Format("[v] 已隐藏 {0}", label));
+                    abd.lParam = (IntPtr)ABS_AUTOHIDE;
+                    SHAppBarMessage(ABM_SETSTATE, ref abd);
+                    messages.Add("已隐藏 " + label);
                     break;
                 case "show":
-                    ShowWindow(t.hWnd, SW_SHOW);
-                    Console.WriteLine(string.Format("[v] 已显示 {0}", label));
+                    abd.lParam = IntPtr.Zero;
+                    SHAppBarMessage(ABM_SETSTATE, ref abd);
+                    messages.Add("已显示 " + label);
                     break;
                 case "toggle":
                 default:
-                    bool vis = IsWindowVisible(t.hWnd);
-                    ShowWindow(t.hWnd, vis ? SW_HIDE : SW_SHOW);
-                    Console.WriteLine(string.Format("[v] {0}: {1}", label, vis ? "可见 -> 隐藏" : "隐藏 -> 可见"));
+                    abd.lParam = (IntPtr)ABS_AUTOHIDE;
+                    SHAppBarMessage(ABM_SETSTATE, ref abd);
+                    messages.Add("已隐藏 " + label);
                     break;
             }
         }
 
-        if (cmd == "toggle") Console.WriteLine("\n按任意键退出...");
-        if (cmd == "toggle") Console.ReadKey();
+        if (cmd == "toggle" && messages.Count > 0)
+            MessageBox(IntPtr.Zero, string.Join("\n", messages), "HideTaskbar", MB_OK | MB_ICONINFORMATION);
     }
 
     static string GetClassName(IntPtr hWnd)
