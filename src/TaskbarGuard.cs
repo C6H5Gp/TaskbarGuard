@@ -87,10 +87,10 @@ class TaskbarGuard
         IntPtr hook = SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_SHOW,
             IntPtr.Zero, OnWindowEvent, 0, 0, WINEVENT_OUTOFCONTEXT);
 
-        // 每秒兜底扫描
+        // 10秒兜底扫描（WinEvent 钩子负责实时响应）
         while (true)
         {
-            Thread.Sleep(1000);
+            Thread.Sleep(10000);
             HideAllTaskbars();
         }
     }
